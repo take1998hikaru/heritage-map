@@ -32,9 +32,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.normpath(os.path.join(HERE, '..', '世界遺産検定'))
 SRC_MAP = os.path.join(SRC_DIR, '世界遺産_地図.html')
 SRC_QUIZ = os.path.join(SRC_DIR, 'クイズ.html')
+SRC_SYNC = os.path.join(SRC_DIR, 'sync.js')
 
 OUT_MAP = os.path.join(HERE, 'map.html')
 OUT_QUIZ = os.path.join(HERE, 'quiz.html')
+OUT_SYNC = os.path.join(HERE, 'sync.js')
 GATE_TEMPLATE = os.path.join(HERE, 'index.html')  # also the output
 
 DEFAULT_PASSWORD = 'sekaken2026'
@@ -175,6 +177,12 @@ def main():
     inject_into_html(SRC_QUIZ, OUT_QUIZ, gate)
     print(f'  quiz.html    : {os.path.getsize(OUT_QUIZ):,} bytes')
     build_gate(password)
+
+    if os.path.exists(SRC_SYNC):
+        shutil.copyfile(SRC_SYNC, OUT_SYNC)
+        print(f'  sync.js      : {os.path.getsize(OUT_SYNC):,} bytes (Gist sync)')
+    else:
+        print(f'  [warn] {SRC_SYNC} not found; Gist sync will not work')
 
     print()
     print(f'Password is: "{password}"')

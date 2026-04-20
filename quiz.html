@@ -7,7 +7,7 @@
 // presence of the post-login token.
 (function() {
   var GATE_KEY = 'heritage_map_gate_v1';
-  var EXPECTED = 'ef0a6fdc7421498a';
+  var EXPECTED = 'd74dd17be9744854';
   try {
     if (localStorage.getItem(GATE_KEY) !== EXPECTED) {
       location.replace('index.html');
@@ -46,6 +46,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>世界遺産 過去問クイズ</title>
+<script src="sync.js"></script>
 <style>
 * { box-sizing: border-box; }
 body {
@@ -313,6 +314,7 @@ mark.hl-answer {
     <div class="stat-chip">誤答 <strong id="statWrong">0</strong></div>
     <div class="stat-chip">未解 <strong id="statPending">0</strong></div>
     <div class="stat-chip">正答率 <strong id="statRate">—</strong></div>
+    <span id="hsync-status-pill" title="同期状態">⚪ 同期オフ</span>
   </div>
 </div>
 
@@ -786,6 +788,15 @@ if (!HERITAGE) {
     '<div class="empty-state"><div class="icon">📭</div><h2>この遺産の過去問はありません</h2><p>「' + escHtml(HERITAGE) + '」に言及した過去問は見つかりませんでした。</p></div>';
 } else {
   renderQuestions();
+}
+
+// Refresh the UI when sync pulls new data in from Gist.
+// sync.js is loaded in <head> so window.HSync is always defined by now.
+if (window.HSync) {
+  HSync.onDataLoaded = function() {
+    try { STATE = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') || {}; } catch (e) { STATE = {}; }
+    if (HERITAGE) renderQuestions();
+  };
 }
 </script>
 </body>
