@@ -54,10 +54,28 @@
     try { return JSON.parse(localStorage.getItem(key) || 'null') || fallback; }
     catch (e) { return fallback; }
   }
-  HSync.getToken  = function() { return localStorage.getItem(TOKEN_KEY) || ''; };
-  HSync.setToken  = function(t) { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); };
-  HSync.getGistId = function() { return localStorage.getItem(GIST_ID_KEY) || ''; };
-  HSync.setGistId = function(g) { if (g) localStorage.setItem(GIST_ID_KEY, g); else localStorage.removeItem(GIST_ID_KEY); };
+  // Accept common paste formats and extract the 20+ hex-char Gist id.
+  //   - raw id       : e53b...
+  //   - full URL     : https://gist.github.com/user/e53b...
+  //   - gist+user    : take1998hikaru/e53b...
+  // If no hex id is found we keep the input trimmed so errors surface.
+  function normalizeGistId(s) {
+    if (!s) return '';
+    s = String(s).trim();
+    var m = s.match(/([0-9a-fA-F]{20,})/);
+    return m ? m[1] : s;
+  }
+
+  HSync.getToken  = function() { return (localStorage.getItem(TOKEN_KEY) || '').trim(); };
+  HSync.setToken  = function(t) {
+    t = (t || '').trim();
+    if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY);
+  };
+  HSync.getGistId = function() { return (localStorage.getItem(GIST_ID_KEY) || '').trim(); };
+  HSync.setGistId = function(g) {
+    var id = normalizeGistId(g);
+    if (id) localStorage.setItem(GIST_ID_KEY, id); else localStorage.removeItem(GIST_ID_KEY);
+  };
   HSync.clearConfig = function() {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(GIST_ID_KEY);
@@ -116,9 +134,25 @@
       'X-GitHub-Api-Version': '2022-11-28',
     };
   }
+  function humanizeStatus(status, action) {
+    if (status === 401) return 'トークンが無効です。再発行してください (401)';
+    if (status === 403) return 'gistスコープが無いか、レート制限です (403)';
+    if (status === 404) return 'Gist IDが見つかりません (404)。空欄にすれば自動作成されます';
+    if (status === 422) return 'リクエスト形式エラー (422)';
+    if (status === 429) return 'GitHub APIのレート制限です (429)。少し待ってから再試行してください';
+    if (status >= 500)  return 'GitHubサーバ側のエラー (' + status + ')';
+    return (action || 'Gist操作') + '失敗 (' + status + ')';
+  }
+  async function readMaybeError(r) {
+    try {
+      var j = await r.json();
+      if (j && j.message) return ' — ' + j.message;
+    } catch (e) {}
+    return '';
+  }
   async function fetchGist(token, gistId) {
     var r = await fetch(API + '/gists/' + gistId, { headers: authHeaders(token) });
-    if (!r.ok) throw new Error('Gist取得失敗 (' + r.status + ')');
+    if (!r.ok) throw new Error(humanizeStatus(r.status, 'Gist取得') + await readMaybeError(r));
     return await r.json();
   }
   async function updateGist(token, gistId, content) {
@@ -129,7 +163,7 @@
         var f = {}; f[GIST_FILE] = { content: JSON.stringify(content, null, 2) }; return f;
       })() })
     });
-    if (!r.ok) throw new Error('Gist更新失敗 (' + r.status + ')');
+    if (!r.ok) throw new Error(humanizeStatus(r.status, 'Gist更新') + await readMaybeError(r));
     return await r.json();
   }
   async function createGist(token, content) {
@@ -145,14 +179,14 @@
       headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders(token)),
       body: JSON.stringify(body)
     });
-    if (!r.ok) throw new Error('Gist作成失敗 (' + r.status + ')');
+    if (!r.ok) throw new Error(humanizeStatus(r.status, 'Gist作成') + await readMaybeError(r));
     return await r.json();
   }
   async function findGistByFile(token) {
-    // User has at most ~100 Gists normally; paginate two pages to be safe.
+    // User has at most ~100 Gists normally; paginate a few pages to be safe.
     for (var page = 1; page <= 3; page++) {
       var r = await fetch(API + '/gists?per_page=100&page=' + page, { headers: authHeaders(token) });
-      if (!r.ok) throw new Error('Gist一覧失敗 (' + r.status + ')');
+      if (!r.ok) throw new Error(humanizeStatus(r.status, 'Gist一覧') + await readMaybeError(r));
       var list = await r.json();
       if (!list.length) break;
       for (var i = 0; i < list.length; i++) {
