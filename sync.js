@@ -41,12 +41,18 @@
   };
 
   // --- localStorage helpers ------------------------------------------------
+  // We capture the original setItem up front so internal writes (from
+  // saveLocal / merge flow) can bypass the interceptor installed further
+  // down. Without this, a pull or push would rewrite CHECKS_KEY, which
+  // would re-trigger pushDebounced and form an infinite feedback loop
+  // (observed symptom: status cycling between "syncing" and "error").
+  var _origSetItem = localStorage.setItem.bind(localStorage);
+  function _internalSet(key, val) {
+    try { _origSetItem(key, val); } catch (e) {}
+  }
   function readJSON(key, fallback) {
     try { return JSON.parse(localStorage.getItem(key) || 'null') || fallback; }
     catch (e) { return fallback; }
-  }
-  function writeJSON(key, val) {
-    try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
   }
   HSync.getToken  = function() { return localStorage.getItem(TOKEN_KEY) || ''; };
   HSync.setToken  = function(t) { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); };
@@ -69,9 +75,10 @@
     };
   }
   function saveLocal(data) {
-    writeJSON(CHECKS_KEY, data.checks || {});
-    writeJSON(QUIZ_KEY,   data.quiz   || {});
-    localStorage.setItem(LAST_MOD_KEY, data.lastModified || new Date().toISOString());
+    // Internal writes bypass the setItem interceptor to avoid push loops.
+    _internalSet(CHECKS_KEY, JSON.stringify(data.checks || {}));
+    _internalSet(QUIZ_KEY,   JSON.stringify(data.quiz   || {}));
+    _internalSet(LAST_MOD_KEY, data.lastModified || new Date().toISOString());
   }
 
   // --- merge ---------------------------------------------------------------
@@ -225,8 +232,9 @@
 
   // Intercept writes to the two tracked localStorage keys so any module that
   // updates state automatically triggers a debounced sync — no need to edit
-  // every existing setItem call site.
-  var _origSetItem = localStorage.setItem.bind(localStorage);
+  // every existing setItem call site. NOTE: saveLocal() uses _internalSet
+  // directly so it does NOT come through here, which would otherwise cause
+  // push → save → push infinite loops.
   localStorage.setItem = function(k, v) {
     _origSetItem(k, v);
     if (k === CHECKS_KEY || k === QUIZ_KEY) {
