@@ -24,7 +24,6 @@ import argparse
 import hashlib
 import os
 import re
-import secrets
 import shutil
 import sys
 
@@ -41,7 +40,12 @@ GATE_TEMPLATE = os.path.join(HERE, 'index.html')  # also the output
 
 DEFAULT_PASSWORD = 'sekaken2026'
 
-GATE_TOKEN = secrets.token_hex(8)
+# The gate token is deterministic from the password. Consequences:
+#   - Same password redeployed → same token → existing devices stay
+#     signed in (no forced re-login on every deploy).
+#   - Changing the password rotates the token, which invalidates all
+#     previously authenticated devices on purpose.
+_TOKEN_SALT = 'heritage-map-token-v1'
 
 GATE_CHECK_SNIPPET = """<script>
 // Password gate: redirect to login if the session token is missing.
@@ -95,6 +99,10 @@ def sha256_hex(s):
     return hashlib.sha256(s.encode('utf-8')).hexdigest()
 
 
+def derive_gate_token(password):
+    return sha256_hex(password + _TOKEN_SALT)[:16]
+
+
 def inject_into_html(src_path, out_path, gate_snippet):
     with open(src_path, 'r', encoding='utf-8') as f:
         html = f.read()
@@ -125,11 +133,8 @@ def inject_into_html(src_path, out_path, gate_snippet):
         f.write(patched)
 
 
-def build_gate(password):
+def build_gate(password, gate_token):
     """Rewrite index.html with hashed password and gate token."""
-    # Read the existing gate template at HERE. The first time this runs
-    # the file contains placeholders; subsequent runs will already have a
-    # hash baked in — we still rewrite it with the new one.
     with open(GATE_TEMPLATE, 'r', encoding='utf-8') as f:
         html = f.read()
     pw_hash = sha256_hex(password)
@@ -137,7 +142,7 @@ def build_gate(password):
     html = re.sub(r"var PASSWORD_SHA256 = '[^']*';",
                   f"var PASSWORD_SHA256 = '{pw_hash}';", html)
     html = re.sub(r"var EXPECTED_TOKEN = '[^']*';",
-                  f"var EXPECTED_TOKEN = '{GATE_TOKEN}';", html)
+                  f"var EXPECTED_TOKEN = '{gate_token}';", html)
     with open(GATE_TEMPLATE, 'w', encoding='utf-8') as f:
         f.write(html)
     print(f'  index.html   : password-hash embedded (SHA-256)')
@@ -171,12 +176,13 @@ def main():
         print(f'ERROR: {SRC_QUIZ} not found; run generate_map.py first')
         sys.exit(1)
 
-    gate = GATE_CHECK_SNIPPET.replace('__GATE_TOKEN__', GATE_TOKEN)
+    gate_token = derive_gate_token(password)
+    gate = GATE_CHECK_SNIPPET.replace('__GATE_TOKEN__', gate_token)
     inject_into_html(SRC_MAP, OUT_MAP, gate)
     print(f'  map.html     : {os.path.getsize(OUT_MAP):,} bytes')
     inject_into_html(SRC_QUIZ, OUT_QUIZ, gate)
     print(f'  quiz.html    : {os.path.getsize(OUT_QUIZ):,} bytes')
-    build_gate(password)
+    build_gate(password, gate_token)
 
     if os.path.exists(SRC_SYNC):
         shutil.copyfile(SRC_SYNC, OUT_SYNC)
@@ -186,7 +192,7 @@ def main():
 
     print()
     print(f'Password is: "{password}"')
-    print(f'Gate token : {GATE_TOKEN}')
+    print(f'Gate token : {gate_token} (derived from password — stable across deploys)')
     print()
     print('Next:')
     print('  cd heritage-map')
