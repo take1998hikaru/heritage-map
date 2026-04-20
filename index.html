@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="世界遺産">
+<meta name="theme-color" content="#1a5276">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>世界遺産 地図チェック</title>
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: 'Segoe UI', 'Yu Gothic UI', 'Meiryo', sans-serif;
+  background: linear-gradient(135deg, #1a5276 0%, #2980b9 100%);
+  color: #fff;
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.card {
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 14px;
+  padding: 32px 26px;
+  max-width: 360px; width: 100%;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  text-align: center;
+}
+.icon-wrap {
+  display: inline-block;
+  background: rgba(255,255,255,0.15);
+  border-radius: 50%;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.icon-wrap img { width: 56px; height: 56px; display: block; }
+h1 { margin: 0 0 4px; font-size: 20px; font-weight: 700; letter-spacing: 1px; }
+.sub { font-size: 12px; opacity: 0.8; margin-bottom: 24px; }
+label { display: block; text-align: left; font-size: 12px; opacity: 0.9; margin-bottom: 6px; }
+.input-row { display: flex; gap: 6px; }
+input[type="password"] {
+  flex: 1; min-width: 0;
+  padding: 11px 14px; font-size: 16px;
+  border: none; border-radius: 8px;
+  background: rgba(255,255,255,0.95); color: #1a1a1a;
+  -webkit-appearance: none;
+}
+input[type="password"]:focus { outline: 2px solid #fdd835; }
+button {
+  padding: 11px 18px; font-size: 15px; font-weight: 700;
+  background: #fdd835; color: #1a1a1a;
+  border: none; border-radius: 8px; cursor: pointer;
+  transition: background 0.15s;
+}
+button:hover { background: #ffeb3b; }
+button:active { transform: translateY(1px); }
+.err {
+  margin-top: 12px; font-size: 13px;
+  background: rgba(244,67,54,0.2); color: #ffcdd2;
+  border: 1px solid rgba(244,67,54,0.5);
+  border-radius: 6px; padding: 8px 12px;
+  display: none;
+}
+.err.show { display: block; }
+.hint {
+  margin-top: 20px; font-size: 11px; opacity: 0.65; line-height: 1.6;
+}
+.hint code { background: rgba(0,0,0,0.25); padding: 1px 5px; border-radius: 3px; font-size: 10px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-wrap"><img src="icon-192.png" alt=""></div>
+    <h1>世界遺産</h1>
+    <div class="sub">地図チェック・3周学習・過去問</div>
+    <form onsubmit="return checkPassword(event)">
+      <label for="pw">合言葉を入力してください</label>
+      <div class="input-row">
+        <input type="password" id="pw" autocomplete="current-password" autofocus inputmode="text" enterkeyhint="go">
+        <button type="submit">入る</button>
+      </div>
+      <div class="err" id="err">合言葉が違います</div>
+    </form>
+    <div class="hint">
+      初回のみ合言葉を入力 → 同じブラウザでは自動で入れるようになります。<br>
+      ホーム画面に追加すると独立アプリのように起動できます。
+    </div>
+  </div>
+
+<script>
+// Client-side password gate.
+// SECURITY NOTE: this is NOT cryptographic protection — the content
+// files are technically accessible to anyone who guesses the URL and
+// inspects the source. The goal is to deter search engines and casual
+// URL-sharing, not to stop a determined attacker. We use SHA-256 so the
+// plaintext password doesn't appear in the HTML source.
+var PASSWORD_SHA256 = '3e68ee725daec6145ed3f42ee517a79a9d8082905d962c1a7737816e4917773f';
+var GATE_KEY = 'heritage_map_gate_v1';
+var EXPECTED_TOKEN = 'ef0a6fdc7421498a';
+
+async function sha256(str) {
+  var buf = new TextEncoder().encode(str);
+  var hash = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(hash))
+    .map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+}
+
+async function checkPassword(ev) {
+  ev.preventDefault();
+  var pw = document.getElementById('pw').value;
+  var errEl = document.getElementById('err');
+  errEl.classList.remove('show');
+  if (!pw) return false;
+  var hash = await sha256(pw);
+  if (hash === PASSWORD_SHA256) {
+    try {
+      localStorage.setItem(GATE_KEY, EXPECTED_TOKEN);
+    } catch (e) {}
+    location.replace('map.html');
+  } else {
+    errEl.classList.add('show');
+    document.getElementById('pw').select();
+  }
+  return false;
+}
+
+// If already passed, skip the gate.
+try {
+  if (localStorage.getItem(GATE_KEY) === EXPECTED_TOKEN) {
+    location.replace('map.html');
+  }
+} catch (e) {}
+</script>
+</body>
+</html>
