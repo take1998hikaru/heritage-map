@@ -192,7 +192,7 @@ def main():
 
     print()
     print(f'Password is: "{password}"')
-    print(f'Gate token : {gate_token} (derived from password — stable across deploys)')
+    print(f'Gate token : {gate_token} (derived from password, stable across deploys)')
     print()
     print('Next:')
     print('  cd heritage-map')
