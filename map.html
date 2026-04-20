@@ -381,9 +381,44 @@ body {
   .topbar h1 { font-size: 15px; width: 100%; }
   .topbar .stat-group { margin-left: 0; }
   .filter-bar { padding: 8px 10px; gap: 8px; }
-  .layout { flex-direction: column; height: auto; }
-  .sidebar { width: 100%; max-height: 35vh; border-right: none; border-bottom: 1px solid #e1e4e8; }
-  #map { height: 55vh; min-height: 300px; }
+
+  /* Fill the viewport and let flex distribute the remaining space
+     between the sidebar and the map instead of using fixed 35vh/55vh. */
+  .layout {
+    flex-direction: column;
+    height: calc(100vh - 140px);   /* subtract top bar + filter bar */
+    min-height: 420px;
+  }
+
+  .sidebar {
+    width: 100%;
+    flex: 0 0 auto;
+    max-height: 45vh;
+    border-right: none;
+    border-bottom: 1px solid #e1e4e8;
+    transition: max-height 0.25s ease;
+    overflow: hidden;
+  }
+  /* Collapsed = only the header bar is visible, so the map gets the
+     full remaining height. User taps the header to expand the list. */
+  .sidebar.collapsed { max-height: 44px; }
+
+  .sidebar-header {
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: rgba(0,0,0,0.05);
+  }
+  .sidebar-header::after {
+    content: "▲";
+    margin-left: 8px;
+    font-size: 10px;
+    opacity: 0.55;
+    transition: transform 0.2s;
+  }
+  .sidebar.collapsed .sidebar-header::after { content: "▼"; }
+
+  #map { flex: 1 1 auto; height: auto; min-height: 250px; }
+
   .pamon-panel { width: 100%; border-left: none; border-top: 1px solid #ddd; }
   .layout.panel-open .pamon-panel { width: 100%; height: 55vh; }
   .layout.panel-open #map { display: none; }
@@ -1041,6 +1076,37 @@ document.getElementById('checkFilter').addEventListener('change', applyFilters);
 applyFilters();
 updateStats();
 setTimeout(function() { map.invalidateSize(); }, 200);
+
+// --- Mobile-only sidebar collapse toggle ---------------------------------
+// Narrow screens are so cramped that keeping the heritage list always
+// expanded (35vh by default) leaves the map almost unusable. On mobile we
+// start with the list collapsed to just its header and let the user tap
+// to expand. Desktop is unaffected because the CSS rules that define the
+// collapsed state live inside `@media (max-width: 768px)`.
+(function() {
+  var mq = window.matchMedia('(max-width: 768px)');
+  var sidebar = document.querySelector('.sidebar');
+  var header  = document.querySelector('.sidebar-header');
+  if (!sidebar || !header) return;
+
+  function applyInitialState(e) {
+    if (e.matches) sidebar.classList.add('collapsed');
+    else sidebar.classList.remove('collapsed');
+    setTimeout(function() { if (map) map.invalidateSize(); }, 260);
+  }
+  applyInitialState(mq);
+  // Toggle changes in orientation / window resize (phones rotating)
+  if (mq.addEventListener) mq.addEventListener('change', applyInitialState);
+  else if (mq.addListener)  mq.addListener(applyInitialState);
+
+  header.addEventListener('click', function(ev) {
+    if (!mq.matches) return;                // Desktop: no-op (CSS ignores it too)
+    // Ignore clicks that originated inside the search input / count span
+    if (ev.target.closest('input, button, select')) return;
+    sidebar.classList.toggle('collapsed');
+    setTimeout(function() { if (map) map.invalidateSize(); }, 260);
+  });
+})();
 
 // When Gist-sync pulls new data, reload in-memory state and refresh the UI.
 // sync.js is loaded in <head> so window.HSync is always defined by now.
