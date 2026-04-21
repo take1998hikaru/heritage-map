@@ -155,14 +155,18 @@
     if (!r.ok) throw new Error(humanizeStatus(r.status, 'Gist取得') + await readMaybeError(r));
     return await r.json();
   }
-  async function updateGist(token, gistId, content) {
-    var r = await fetch(API + '/gists/' + gistId, {
+  async function updateGist(token, gistId, content, opts) {
+    var init = {
       method: 'PATCH',
       headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders(token)),
       body: JSON.stringify({ files: (function() {
         var f = {}; f[GIST_FILE] = { content: JSON.stringify(content, null, 2) }; return f;
       })() })
-    });
+    };
+    // keepalive lets the browser finish the request even if the page is
+    // being unloaded / the PWA is being suspended.
+    if (opts && opts.keepalive) init.keepalive = true;
+    var r = await fetch(API + '/gists/' + gistId, init);
     if (!r.ok) throw new Error(humanizeStatus(r.status, 'Gist更新') + await readMaybeError(r));
     return await r.json();
   }
@@ -232,7 +236,7 @@
     }
   };
 
-  HSync.push = async function() {
+  HSync.push = async function(opts) {
     var token = HSync.getToken();
     if (!token) { setStatus('disabled'); return; }
     setStatus('syncing');
@@ -243,10 +247,10 @@
 
       var gistId = HSync.getGistId();
       if (gistId) {
-        await updateGist(token, gistId, local);
+        await updateGist(token, gistId, local, opts);
       } else {
         var found = await findGistByFile(token);
-        if (found) { gistId = found.id; HSync.setGistId(gistId); await updateGist(token, gistId, local); }
+        if (found) { gistId = found.id; HSync.setGistId(gistId); await updateGist(token, gistId, local, opts); }
         else       { var ng = await createGist(token, local); HSync.setGistId(ng.id); }
       }
       HSync.lastSyncAt = new Date();
@@ -261,7 +265,22 @@
   HSync.pushDebounced = function() {
     if (!HSync.getToken()) return;
     if (pushTimer) clearTimeout(pushTimer);
-    pushTimer = setTimeout(function() { HSync.push(); }, DEBOUNCE_MS);
+    pushTimer = setTimeout(function() {
+      pushTimer = null;
+      HSync.push();
+    }, DEBOUNCE_MS);
+  };
+
+  // If a debounced push is pending, fire it immediately. Used when the app
+  // is about to be backgrounded / closed so the 2-second timer doesn't get
+  // suspended by iOS / Android PWAs before it fires.
+  HSync.flushPendingPush = function() {
+    if (pushTimer) {
+      clearTimeout(pushTimer);
+      pushTimer = null;
+      return HSync.push({ keepalive: true });
+    }
+    return Promise.resolve();
   };
 
   // Intercept writes to the two tracked localStorage keys so any module that
@@ -426,10 +445,40 @@
 
   HSync.onStatusChange = renderStatusPill;
 
+  // --- Lifecycle hooks -----------------------------------------------------
+  // Problem: in an installed PWA, `setTimeout` can be paused or delayed
+  // when the app is backgrounded, so a pending 2-second debounced push may
+  // never fire. The symptom the user reported: "edits made from the PWA
+  // don't reach the Gist, but the browser tab syncs fine."
+  // Fix:
+  //   - hidden  → flush the pending debounced push immediately
+  //   - visible → if the last pull is old, auto-pull so the PWA shows
+  //               changes made on the other device while it was closed.
+  var lastAutoPullAt = 0;
+  var AUTO_PULL_THROTTLE_MS = 30 * 1000;   // don't spam pulls on quick switches
+
+  function onVisibilityChange() {
+    if (document.visibilityState === 'hidden') {
+      HSync.flushPendingPush();
+    } else if (document.visibilityState === 'visible') {
+      if (!HSync.getToken()) return;
+      var now = Date.now();
+      if (now - lastAutoPullAt > AUTO_PULL_THROTTLE_MS) {
+        lastAutoPullAt = now;
+        HSync.pull();
+      }
+    }
+  }
+
+  function onPageHide() { HSync.flushPendingPush(); }
+
   function init() {
     renderStatusPill();
     mountSettingsModal();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pagehide', onPageHide);
     HSync.autoSyncOnLoad();
+    lastAutoPullAt = Date.now();
   }
 
   if (document.readyState === 'loading') {
