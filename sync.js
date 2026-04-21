@@ -343,6 +343,32 @@
     el.textContent = STATUS_TEXT[s] || '';
     el.title = HSync.lastError && s === 'error' ? HSync.lastError : '';
     el.dataset.syncStatus = s;
+    var btn = document.getElementById('hsync-refresh-btn');
+    if (btn) {
+      btn.disabled = (s === 'syncing');
+      btn.classList.toggle('spinning', s === 'syncing');
+    }
+  }
+
+  // Insert a manual refresh button next to the status pill so the user can
+  // pull "latest from Gist" on demand (faster than waiting for the 30-second
+  // auto-pull throttle, especially when bouncing between PC and phone).
+  function mountRefreshButton() {
+    var pill = document.getElementById('hsync-status-pill');
+    if (!pill || document.getElementById('hsync-refresh-btn')) return;
+    var btn = document.createElement('button');
+    btn.id = 'hsync-refresh-btn';
+    btn.type = 'button';
+    btn.textContent = '🔄';
+    btn.title = 'Gistから最新状態を取得（PC⇔スマホの同期待ちを短縮）';
+    btn.addEventListener('click', function() {
+      if (!HSync.getToken()) {
+        alert('先に「⚙️ 同期設定」でトークンを登録してください。');
+        return;
+      }
+      HSync.pull();
+    });
+    pill.parentNode.insertBefore(btn, pill);
   }
 
   // Settings modal: toggled by element with id="hsync-open-settings"
@@ -403,6 +429,11 @@
       '#hsync-status-pill { font-size:12px; padding:3px 9px; border-radius:12px; background:rgba(255,255,255,0.15); user-select:none; }',
       '#hsync-status-pill[data-sync-status="error"] { background:rgba(244,67,54,0.3); }',
       '#hsync-status-pill[data-sync-status="synced"] { background:rgba(46,125,50,0.3); }',
+      '#hsync-refresh-btn { background:rgba(255,255,255,0.15); color:#fff; border:1px solid rgba(255,255,255,0.3); border-radius:12px; padding:3px 10px; font-size:13px; line-height:1; cursor:pointer; margin-right:4px; }',
+      '#hsync-refresh-btn:hover:not(:disabled) { background:rgba(255,255,255,0.28); }',
+      '#hsync-refresh-btn:disabled { cursor:wait; opacity:0.6; }',
+      '#hsync-refresh-btn.spinning { animation: hsync-spin 0.9s linear infinite; }',
+      '@keyframes hsync-spin { to { transform: rotate(360deg); } }',
       ''
     ].join('\n');
     document.head.appendChild(style);
@@ -497,6 +528,7 @@
   function init() {
     renderStatusPill();
     mountSettingsModal();
+    mountRefreshButton();
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pagehide', onPageHide);
     HSync.autoSyncOnLoad();
