@@ -100,11 +100,33 @@
   }
 
   // --- merge ---------------------------------------------------------------
+  // WARNING about data loss:
+  //   A previous version used "last-writer-wins" on the whole checks
+  //   object, keyed by lastModified. That lost data when a freshly
+  //   installed device (with empty localStorage) pushed before pulling —
+  //   its "now" timestamp beat the other device's last-push timestamp and
+  //   wiped a full session of checks.
+  //
+  //   We now merge per heritage, keeping the MAX count. 3周チェックは
+  //   0→1→2→3 に単調増加するだけなので、max で失われる情報は無い。
+  //   Trade-off: a "全リセット" by the user is eclipsed by another
+  //   device's older non-zero values and comes back. Acceptable: resets
+  //   are rare and the user can redo them on the "winning" device.
   function merge(local, remote) {
     var lt = Date.parse(local.lastModified  || '1970-01-01T00:00:00Z') || 0;
     var rt = Date.parse(remote.lastModified || '1970-01-01T00:00:00Z') || 0;
-    // checks: whole-object, newer timestamp wins
-    var checks = (rt > lt) ? (remote.checks || {}) : (local.checks || {});
+
+    var checks = {};
+    var lc = local.checks  || {};
+    var rc = remote.checks || {};
+    var keys = {};
+    Object.keys(lc).forEach(function(k) { keys[k] = 1; });
+    Object.keys(rc).forEach(function(k) { keys[k] = 1; });
+    Object.keys(keys).forEach(function(k) {
+      var v = Math.max(+lc[k] || 0, +rc[k] || 0);
+      if (v > 0) checks[k] = v;
+    });
+
     // quiz: per-question by ts
     var quiz = {};
     [local.quiz, remote.quiz].forEach(function(src) {
