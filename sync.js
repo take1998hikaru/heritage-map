@@ -1,18 +1,22 @@
 /* Heritage Map — Gist sync
  *
- * Syncs two localStorage slots across devices through a single GitHub Gist:
+ * Syncs three localStorage slots across devices through a single GitHub Gist:
  *   heritage_map_checks_v1  (3-round check state)
  *   heritage_map_quiz_v1    (per-question answer history)
+ *   heritage_map_memos_v1   (per-heritage free-form study memos)
  *
  * The Gist stores one file `heritage_data.json` with:
- *   { version, lastModified, checks: {...}, quiz: {...} }
+ *   { version, lastModified, checks: {...}, quiz: {...}, memos: {...},
+ *     memoMTimes: { "<heritage>": <ms-epoch>, ... } }
  *
  * Auth: user's GitHub Personal Access Token with `gist` scope.
  * Both token and gist id are kept in localStorage on each device.
  *
  * Merge strategy:
- *   - checks:  whole-object, last-writer-wins based on lastModified.
+ *   - checks:  per-heritage, keep the MAX count (monotonic 0→1→2→3).
  *   - quiz:    per-question, keeps the entry with the newer `ts`.
+ *   - memos:   per-heritage, last-writer-wins based on memoMTimes.
+ *              (memos are free-form text; we cannot merge line by line.)
  *
  * UI helpers (status pill, settings modal) are included and attached
  * at the end of this file when it sees the appropriate anchor elements.
@@ -22,6 +26,8 @@
 
   var CHECKS_KEY = 'heritage_map_checks_v1';
   var QUIZ_KEY   = 'heritage_map_quiz_v1';
+  var MEMOS_KEY  = 'heritage_map_memos_v1';
+  var MEMO_MTIMES_KEY = 'heritage_map_memo_mtimes_v1';
   var LAST_MOD_KEY = 'heritage_map_last_mod';
   var TOKEN_KEY  = 'heritage_sync_token';
   var GIST_ID_KEY = 'heritage_sync_gist_id';
@@ -90,12 +96,16 @@
       lastModified: localStorage.getItem(LAST_MOD_KEY) || new Date(0).toISOString(),
       checks: readJSON(CHECKS_KEY, {}),
       quiz:   readJSON(QUIZ_KEY,   {}),
+      memos:  readJSON(MEMOS_KEY,  {}),
+      memoMTimes: readJSON(MEMO_MTIMES_KEY, {}),
     };
   }
   function saveLocal(data) {
     // Internal writes bypass the setItem interceptor to avoid push loops.
     _internalSet(CHECKS_KEY, JSON.stringify(data.checks || {}));
     _internalSet(QUIZ_KEY,   JSON.stringify(data.quiz   || {}));
+    _internalSet(MEMOS_KEY,  JSON.stringify(data.memos  || {}));
+    _internalSet(MEMO_MTIMES_KEY, JSON.stringify(data.memoMTimes || {}));
     _internalSet(LAST_MOD_KEY, data.lastModified || new Date().toISOString());
   }
 
@@ -140,11 +150,51 @@
         });
       });
     });
+
+    // memos: per-heritage last-writer-wins by memoMTimes (ms epoch).
+    //   - If only one side has a memo, take it (and inherit its mtime).
+    //   - If both sides have one, keep the side with the newer mtime.
+    //   - When mtimes are missing (older client) we fall back to the
+    //     side-level lastModified, then finally to "remote wins" so a
+    //     freshly-installed device doesn't accidentally wipe a Gist memo.
+    var memos = {};
+    var memoMTimes = {};
+    var lm = (local && local.memos)  || {};
+    var rm = (remote && remote.memos) || {};
+    var lmt = (local && local.memoMTimes)  || {};
+    var rmt = (remote && remote.memoMTimes) || {};
+    var memoKeys = {};
+    Object.keys(lm).forEach(function(k) { memoKeys[k] = 1; });
+    Object.keys(rm).forEach(function(k) { memoKeys[k] = 1; });
+    Object.keys(memoKeys).forEach(function(k) {
+      var hasL = Object.prototype.hasOwnProperty.call(lm, k);
+      var hasR = Object.prototype.hasOwnProperty.call(rm, k);
+      if (hasL && !hasR) {
+        memos[k] = lm[k]; memoMTimes[k] = lmt[k] || lt;
+      } else if (!hasL && hasR) {
+        memos[k] = rm[k]; memoMTimes[k] = rmt[k] || rt;
+      } else {
+        var lts = lmt[k] || lt;
+        var rts = rmt[k] || rt;
+        if (lts >= rts) { memos[k] = lm[k]; memoMTimes[k] = lts; }
+        else            { memos[k] = rm[k]; memoMTimes[k] = rts; }
+      }
+      // Empty-string memos count as "deleted" — drop them from the result
+      // so a deletion on one device propagates to the other after the
+      // overwrite has been recorded.
+      if (typeof memos[k] === 'string' && memos[k].trim() === '') {
+        delete memos[k];
+        delete memoMTimes[k];
+      }
+    });
+
     return {
       version: 1,
       lastModified: new Date(Math.max(lt, rt)).toISOString(),
       checks: checks,
       quiz:   quiz,
+      memos:  memos,
+      memoMTimes: memoMTimes,
     };
   }
 
@@ -305,12 +355,43 @@
     return Promise.resolve();
   };
 
-  // Intercept writes to the two tracked localStorage keys so any module that
+  // When the app writes the whole MEMOS_KEY dict in one go, we need to
+  // stamp per-heritage mtimes for any entries whose text changed (or that
+  // got added / removed). This lets a per-heritage last-writer-wins merge
+  // still work even though the writer doesn't know which key changed.
+  function stampMemoMTimes(prevRaw, nextRaw) {
+    var prev = {};
+    var next = {};
+    try { prev = JSON.parse(prevRaw || '{}') || {}; } catch (e) { prev = {}; }
+    try { next = JSON.parse(nextRaw || '{}') || {}; } catch (e) { next = {}; }
+    var mtimes = readJSON(MEMO_MTIMES_KEY, {});
+    var now = Date.now();
+    var keys = {};
+    Object.keys(prev).forEach(function(k) { keys[k] = 1; });
+    Object.keys(next).forEach(function(k) { keys[k] = 1; });
+    var changed = false;
+    Object.keys(keys).forEach(function(k) {
+      var p = prev[k], n = next[k];
+      if (p !== n) { mtimes[k] = now; changed = true; }
+    });
+    if (changed) _origSetItem(MEMO_MTIMES_KEY, JSON.stringify(mtimes));
+  }
+
+  // Intercept writes to tracked localStorage keys so any module that
   // updates state automatically triggers a debounced sync — no need to edit
   // every existing setItem call site. NOTE: saveLocal() uses _internalSet
   // directly so it does NOT come through here, which would otherwise cause
   // push → save → push infinite loops.
   localStorage.setItem = function(k, v) {
+    if (k === MEMOS_KEY) {
+      // Capture the previous value BEFORE overwriting so we can diff it.
+      var prevRaw = localStorage.getItem(MEMOS_KEY);
+      _origSetItem(k, v);
+      stampMemoMTimes(prevRaw, v);
+      _origSetItem(LAST_MOD_KEY, new Date().toISOString());
+      HSync.pushDebounced();
+      return;
+    }
     _origSetItem(k, v);
     if (k === CHECKS_KEY || k === QUIZ_KEY) {
       // Bump lastModified locally so the next merge recognises us as newer.

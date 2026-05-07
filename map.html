@@ -362,6 +362,65 @@ body {
 .popup-btn.undo { background: #fff; color: #d35400; border-color: #e0a800; }
 .popup-btn.undo:hover { background: #fef5e7; border-color: #d35400; }
 
+/* 自由記述メモ（ポップアップ内） */
+.popup-memo { margin-top: 10px; }
+.popup-memo-label { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 700; color: #1a5276; margin-bottom: 4px; }
+.popup-memo-hint { font-size: 10px; font-weight: 500; color: #888; background: #f0f0f0; padding: 1px 6px; border-radius: 3px; }
+.popup-memo-input {
+  width: 100%; min-height: 60px; resize: vertical;
+  padding: 7px 9px; font-size: 13px; line-height: 1.5;
+  font-family: 'Segoe UI', 'Yu Gothic UI', 'Meiryo', sans-serif;
+  border: 1.5px solid #ccc; border-radius: 5px;
+  background: #fffefa; color: #222;
+  box-sizing: border-box;
+}
+.popup-memo-input:focus { outline: none; border-color: #2980b9; background: #fff; box-shadow: 0 0 0 2px rgba(41,128,185,0.15); }
+
+/* メモ検索の結果ハイライト（マーカー＆サイドバー） */
+.list-item.memo-hit { box-shadow: inset 4px 0 0 #fdd835; }
+.list-name .memo-icon { color: #d35400; margin-left: 4px; font-size: 11px; vertical-align: 1px; }
+
+/* メモ検索ボックス */
+.memo-search-wrap { display: inline-flex; align-items: center; gap: 4px; }
+.memo-search-wrap input {
+  padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px;
+  font-size: 13px; width: 180px;
+}
+.memo-search-wrap input:focus { outline: none; border-color: #d35400; }
+.memo-search-wrap .memo-clear {
+  border: 1px solid #ccc; background: #fff; color: #666;
+  border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer;
+}
+.memo-search-wrap .memo-clear:hover { border-color: #d35400; color: #d35400; }
+.memo-search-wrap .memo-hits { font-size: 12px; color: #d35400; font-weight: 700; min-width: 1.5em; }
+
+/* 全メモ一覧モーダル */
+.memo-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 11000;
+  display: flex; align-items: center; justify-content: center; padding: 20px; }
+.memo-modal[hidden] { display: none !important; }
+.memo-modal-box {
+  background: #fff; color: #222; border-radius: 10px;
+  width: 100%; max-width: 560px; max-height: 85vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+}
+.memo-modal-head { padding: 14px 18px; border-bottom: 1px solid #eee; display: flex; align-items: center; gap: 10px; }
+.memo-modal-head h3 { margin: 0; font-size: 16px; color: #1a5276; flex: 1; }
+.memo-modal-head .memo-modal-count { font-size: 12px; color: #777; }
+.memo-modal-head .memo-modal-close {
+  background: transparent; border: none; font-size: 22px; line-height: 1; color: #888; cursor: pointer; padding: 0 4px;
+}
+.memo-modal-head .memo-modal-close:hover { color: #c62828; }
+.memo-modal-body { flex: 1; overflow-y: auto; padding: 6px 0; }
+.memo-modal-empty { padding: 30px 20px; text-align: center; color: #888; font-size: 13px; line-height: 1.7; }
+.memo-row { padding: 12px 18px; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background 0.12s; }
+.memo-row:hover { background: #f4f8fb; }
+.memo-row .memo-row-title { font-size: 14px; font-weight: 700; color: #1a5276; margin-bottom: 4px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.memo-row .memo-row-meta { font-size: 11px; color: #888; }
+.memo-row .memo-row-page { font-size: 11px; color: #d35400; font-weight: 700; margin-left: 6px; }
+.memo-row .memo-row-text { font-size: 12px; color: #444; margin-top: 4px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+.memo-row mark { background: #fff3a3; color: inherit; padding: 0 1px; border-radius: 2px; }
+
 .leaflet-tooltip.map-tt {
   background: rgba(26,82,118,0.95); color: #fff;
   border: none; padding: 6px 9px; border-radius: 5px;
@@ -466,6 +525,26 @@ body {
   </label>
   <div class="divider"></div>
   <span>表示中: <span class="hits" id="visibleCount">0</span> 件</span>
+  <div class="divider"></div>
+  <label class="memo-search-wrap" title="自分が書いたメモのキーワード検索">
+    📝 メモ検索:
+    <input type="text" id="memoSearch" placeholder="メモ内のキーワード" oninput="onMemoSearchInput()">
+    <button type="button" class="memo-clear" id="memoSearchClear" onclick="clearMemoSearch()" title="クリア">×</button>
+    <span class="memo-hits" id="memoSearchHits"></span>
+  </label>
+  <button type="button" class="btn" id="memoListBtn" onclick="openMemoListModal()" title="メモ一覧を開く">📒 全メモ</button>
+</div>
+
+<!-- 全メモ一覧モーダル -->
+<div class="memo-modal" id="memoListModal" hidden>
+  <div class="memo-modal-box">
+    <div class="memo-modal-head">
+      <h3>📒 全メモ</h3>
+      <span class="memo-modal-count" id="memoModalCount"></span>
+      <button type="button" class="memo-modal-close" onclick="closeMemoListModal()" title="閉じる (Esc)">×</button>
+    </div>
+    <div class="memo-modal-body" id="memoModalBody"></div>
+  </div>
 </div>
 
 <div class="layout" id="layout">
@@ -540,6 +619,31 @@ function setCheck(name, val) {
   if (val === 0) delete CHECKS[name];
   else CHECKS[name] = val;
   saveChecks();
+}
+
+// ============================================================
+// 遺産メモ（自由記述メモ機能 — Gist同期対象）
+// ============================================================
+var MEMO_KEY = 'heritage_map_memos_v1';
+var MEMOS = {};
+try { MEMOS = JSON.parse(localStorage.getItem(MEMO_KEY) || '{}') || {}; } catch(e) { MEMOS = {}; }
+function saveMemos() {
+  try { localStorage.setItem(MEMO_KEY, JSON.stringify(MEMOS)); } catch(e) {}
+}
+function getMemo(name) { return MEMOS[name] || ''; }
+function setMemo(name, text) {
+  text = (text == null) ? '' : String(text);
+  if (text.trim() === '') {
+    if (Object.prototype.hasOwnProperty.call(MEMOS, name)) delete MEMOS[name];
+  } else {
+    MEMOS[name] = text;
+  }
+  saveMemos();
+}
+function memoCount() {
+  var n = 0;
+  for (var k in MEMOS) if (Object.prototype.hasOwnProperty.call(MEMOS, k) && (MEMOS[k] || '').trim() !== '') n++;
+  return n;
 }
 
 // ============================================================
@@ -843,8 +947,35 @@ function openPopup(marker) {
     html += '<button class="popup-btn undo" onclick="onPopupUndo(\'' + escAttr(d.name) + '\')" title="1周戻す">↶ 取り消し</button>';
   }
   html += '</div>';
+
+  // 自由記述メモ — このポップアップを閉じてもlocalStorageに保存される
+  var memoVal = getMemo(d.name);
+  html += '<div class="popup-memo">';
+  html += '<label class="popup-memo-label">📝 メモ <span class="popup-memo-hint">自動保存</span></label>';
+  html += '<textarea class="popup-memo-input" data-heritage-memo="' + escHtml(d.name) + '" '
+       +  'placeholder="キーワード・気づき・疑問など自由に記入（自動保存されます）" rows="3">'
+       +  escHtml(memoVal) + '</textarea>';
+  html += '</div>';
+
   marker.unbindPopup();
-  marker.bindPopup(html, { maxWidth: 280 }).openPopup();
+  marker.bindPopup(html, { maxWidth: 320 }).openPopup();
+
+  // ポップアップが描画された後にメモ欄へ入力監視を結線
+  setTimeout(bindOpenPopupMemoHandler, 0);
+}
+
+// 現在開いているポップアップ内のメモ <textarea> を監視し、
+// 入力のたびに localStorage（→ Gist 同期）へ反映する。
+function bindOpenPopupMemoHandler() {
+  var ta = document.querySelector('.leaflet-popup-content textarea[data-heritage-memo]');
+  if (!ta || ta._memoBound) return;
+  ta._memoBound = true;
+  var heritageName = ta.getAttribute('data-heritage-memo');
+  ta.addEventListener('input', function() {
+    setMemo(heritageName, ta.value);
+    // 検索ヒット数を再計算（メモが追加/削除されたら表示を更新）
+    if (typeof refreshMemoSearchHits === 'function') refreshMemoSearchHits();
+  });
 }
 function escAttr(s) { return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
 function checkLabel(c) {
@@ -905,6 +1036,12 @@ function applyFilters() {
   var country = (document.getElementById('countryFilter').value || '').trim();
   var checkFilter = document.getElementById('checkFilter').value;
 
+  // メモ検索（filter-bar の📝メモ検索ボックス）が入っていれば、
+  // メモにキーワードを含む遺産だけ通す。検索ヒットは markerLayer に確実に
+  // 残るので「キーワード含む遺産がハイライトされる」要件を満たす。
+  var memoQ = getMemoSearchQuery();
+  var memoHits = memoSearchMatches(memoQ);   // null / { name: true, ... }
+
   markerLayer.clearLayers();
   visibleList = [];
 
@@ -922,6 +1059,7 @@ function applyFilters() {
     if (checkFilter === '2' && c !== 2) return;
     if (checkFilter === '3' && c !== 3) return;
     if (checkFilter === 'lt3' && c >= 3) return;
+    if (memoHits && !memoHits[d.name]) return;
     markerLayer.addLayer(m);
     visibleList.push(m);
   });
@@ -946,15 +1084,20 @@ function renderSidebar() {
     return pa - pb;
   });
 
+  var memoQ = getMemoSearchQuery();
   var html = '';
   list.forEach(function(m) {
     var d = m._d;
     var cat = m._cat;
     var c = getCheck(d.name);
-    html += '<div class="list-item check-' + c + '" data-name="' + escHtml(d.name) + '" onclick="onListClick(' + m._idx + ')">';
+    var memoText = (MEMOS[d.name] || '');
+    var hasMemo = memoText.trim() !== '';
+    var memoHit = memoQ && memoText.toLowerCase().indexOf(memoQ) >= 0;
+    var hitCls = memoHit ? ' memo-hit' : '';
+    html += '<div class="list-item check-' + c + hitCls + '" data-name="' + escHtml(d.name) + '" onclick="onListClick(' + m._idx + ')">';
     html += '<div class="list-dot ' + cat + '"></div>';
     html += '<div class="list-info">';
-    html += '<div class="list-name">' + escHtml(d.name) + '</div>';
+    html += '<div class="list-name">' + escHtml(d.name) + (hasMemo ? '<span class="memo-icon" title="メモあり">📝</span>' : '') + '</div>';
     html += '<div class="list-sub">';
     if (d.country) html += '<span>' + escHtml(d.country) + '</span>';
     if (d.year) html += '<span>' + escHtml(d.year) + '年</span>';
@@ -1108,14 +1251,163 @@ setTimeout(function() { map.invalidateSize(); }, 200);
   });
 })();
 
+// ============================================================
+// メモ検索 / 全メモ一覧
+// ============================================================
+function getMemoSearchQuery() {
+  var el = document.getElementById('memoSearch');
+  return el ? (el.value || '').trim().toLowerCase() : '';
+}
+// 指定キーワードを含むメモがある遺産名（小文字一致）。空クエリなら null。
+function memoSearchMatches(q) {
+  if (!q) return null;
+  var hits = {};
+  for (var name in MEMOS) {
+    if (!Object.prototype.hasOwnProperty.call(MEMOS, name)) continue;
+    var t = (MEMOS[name] || '').toLowerCase();
+    if (t.indexOf(q) >= 0) hits[name] = true;
+  }
+  return hits;
+}
+function refreshMemoSearchHits() {
+  var q = getMemoSearchQuery();
+  var hitsEl = document.getElementById('memoSearchHits');
+  if (!q) {
+    if (hitsEl) hitsEl.textContent = '';
+    return;
+  }
+  var hits = memoSearchMatches(q) || {};
+  var n = Object.keys(hits).length;
+  if (hitsEl) hitsEl.textContent = n + '件';
+}
+function onMemoSearchInput() {
+  applyFilters();        // マーカー側の絞り込みも再適用
+  refreshMemoSearchHits();
+}
+function clearMemoSearch() {
+  var el = document.getElementById('memoSearch');
+  if (el) el.value = '';
+  refreshMemoSearchHits();
+  applyFilters();
+}
+
+// ----- 全メモ一覧モーダル -----
+function escRegExp(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function highlightHtml(text, q) {
+  var safe = escHtml(text);
+  if (!q) return safe;
+  var re = new RegExp('(' + escRegExp(q) + ')', 'gi');
+  // q は小文字化されているが、表示中のテキストには大小混在し得る。
+  // safe は HTML エスケープ済みなので mark タグを直接埋め込んで OK。
+  return safe.replace(re, '<mark>$1</mark>');
+}
+function openMemoListModal() {
+  renderMemoListModal();
+  var modal = document.getElementById('memoListModal');
+  if (modal) modal.hidden = false;
+}
+function closeMemoListModal() {
+  var modal = document.getElementById('memoListModal');
+  if (modal) modal.hidden = true;
+}
+function renderMemoListModal() {
+  var body = document.getElementById('memoModalBody');
+  var countEl = document.getElementById('memoModalCount');
+  if (!body) return;
+  var q = getMemoSearchQuery();   // 検索ボックスにキーワードがあれば一覧側にも反映
+  // メモがある遺産のみ抽出 → ページ順ソート
+  var rows = [];
+  MAP_DATA.forEach(function(d) {
+    var memo = (MEMOS[d.name] || '').trim();
+    if (!memo) return;
+    if (q && memo.toLowerCase().indexOf(q) < 0) return;
+    rows.push({ d: d, memo: memo });
+  });
+  rows.sort(function(a, b) {
+    var pa = parseInt(a.d.page) || 9999, pb = parseInt(b.d.page) || 9999;
+    return pa - pb;
+  });
+  if (countEl) countEl.textContent = rows.length + '件' + (q ? '（"' + q + '" で絞り込み中）' : '');
+
+  if (rows.length === 0) {
+    body.innerHTML = '<div class="memo-modal-empty">'
+      + (q ? 'キーワード「' + escHtml(q) + '」を含むメモはまだありません。' : 'まだメモがありません。<br>マーカーを開いて 📝 メモ欄に書き込むと、ここに一覧表示されます。')
+      + '</div>';
+    return;
+  }
+  var html = '';
+  rows.forEach(function(r) {
+    var d = r.d;
+    var idx = -1;
+    for (var i = 0; i < allMarkers.length; i++) if (allMarkers[i]._d.name === d.name) { idx = i; break; }
+    html += '<div class="memo-row" onclick="onMemoRowClick(' + idx + ')">';
+    html +=   '<div class="memo-row-title">' + escHtml(d.name);
+    if (d.page) html += '<span class="memo-row-page">P.' + escHtml(d.page) + '</span>';
+    html +=   '</div>';
+    html +=   '<div class="memo-row-meta">';
+    if (d.country) html += escHtml(d.country);
+    if (d.year) html += (d.country ? ' / ' : '') + escHtml(d.year) + '年';
+    if (d.classification) html += ' / ' + escHtml(d.classification);
+    html +=   '</div>';
+    html +=   '<div class="memo-row-text">' + highlightHtml(r.memo, q) + '</div>';
+    html += '</div>';
+  });
+  body.innerHTML = html;
+}
+function onMemoRowClick(idx) {
+  closeMemoListModal();
+  if (idx < 0 || idx >= allMarkers.length) return;
+  // 現在のフィルタに掛かっていないと onListClick がうまく動かないので、
+  // マーカーは markerLayer に居なくてもポップアップ表示できるよう直接処理する。
+  var marker = allMarkers[idx];
+  if (!marker) return;
+  var d = marker._d;
+  if (!markerLayer.hasLayer(marker)) markerLayer.addLayer(marker);
+  allMarkers.forEach(function(m) { m._highlighted = false; refreshMarkerStyle(m); });
+  marker._highlighted = true;
+  refreshMarkerStyle(marker);
+  map.setView([d.lat, d.lon], Math.max(map.getZoom(), 5), { animate: true });
+  setTimeout(function() { openPopup(marker); }, 250);
+}
+
+// Esc でモーダルを閉じる
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Escape') return;
+  var modal = document.getElementById('memoListModal');
+  if (modal && !modal.hidden) closeMemoListModal();
+});
+// 背景クリックでモーダルを閉じる
+(function() {
+  var modal = document.getElementById('memoListModal');
+  if (modal) {
+    modal.addEventListener('click', function(e) {
+      if (e.target === modal) closeMemoListModal();
+    });
+  }
+})();
+
+// 初回のヒット数表示（ページ復帰時など）
+refreshMemoSearchHits();
+
 // When Gist-sync pulls new data, reload in-memory state and refresh the UI.
 // sync.js is loaded in <head> so window.HSync is always defined by now.
 if (window.HSync) {
   HSync.onDataLoaded = function() {
     try { CHECKS = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') || {}; } catch (e) { CHECKS = {}; }
+    try { MEMOS = JSON.parse(localStorage.getItem(MEMO_KEY) || '{}') || {}; } catch (e) { MEMOS = {}; }
     allMarkers.forEach(function(m) { refreshMarkerStyle(m); refreshMarkerTooltip(m); });
     renderSidebar();
     updateStats();
+    refreshMemoSearchHits();
+    // モーダルが開いていれば再描画
+    var modal = document.getElementById('memoListModal');
+    if (modal && !modal.hidden) renderMemoListModal();
+    // 開いているポップアップに残ったメモテキストエリアを最新値で上書き
+    // （ユーザー入力中の場合は document.activeElement と一致するので除外）
+    var ta = document.querySelector('.leaflet-popup-content textarea[data-heritage-memo]');
+    if (ta && document.activeElement !== ta) {
+      ta.value = getMemo(ta.getAttribute('data-heritage-memo'));
+    }
   };
 }
 </script>
