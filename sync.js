@@ -28,6 +28,12 @@
   var QUIZ_KEY   = 'heritage_map_quiz_v1';
   var MEMOS_KEY  = 'heritage_map_memos_v1';
   var MEMO_MTIMES_KEY = 'heritage_map_memo_mtimes_v1';
+  // Base snapshot of the memos as they were at the last successful sync.
+  // Used for a clock-free 3-way merge (see mergeMemos). This is the fix for
+  // "memos vanish when pressing 更新" and "PC⇔phone don't sync": the old
+  // logic compared device clocks (memoMTimes), so the device with the faster
+  // clock always won and silently overwrote the other side's edits.
+  var MEMOS_BASE_KEY = 'heritage_map_memos_base_v1';
   var LAST_MOD_KEY = 'heritage_map_last_mod';
   var TOKEN_KEY  = 'heritage_sync_token';
   var GIST_ID_KEY = 'heritage_sync_gist_id';
@@ -98,6 +104,8 @@
       quiz:   readJSON(QUIZ_KEY,   {}),
       memos:  readJSON(MEMOS_KEY,  {}),
       memoMTimes: readJSON(MEMO_MTIMES_KEY, {}),
+      // Last-synced memo snapshot (the "common ancestor" for 3-way merge).
+      memosBase: readJSON(MEMOS_BASE_KEY, {}),
     };
   }
   function saveLocal(data) {
@@ -107,6 +115,12 @@
     _internalSet(MEMOS_KEY,  JSON.stringify(data.memos  || {}));
     _internalSet(MEMO_MTIMES_KEY, JSON.stringify(data.memoMTimes || {}));
     _internalSet(LAST_MOD_KEY, data.lastModified || new Date().toISOString());
+  }
+  // Record "what the Gist now holds for memos" so the next merge can tell
+  // which side actually changed. Call this right after a push succeeds, or
+  // after a pull has converged the Gist to the merged result.
+  function saveMemosBase(memos) {
+    _internalSet(MEMOS_BASE_KEY, JSON.stringify(memos || {}));
   }
 
   // --- merge ---------------------------------------------------------------
@@ -151,42 +165,14 @@
       });
     });
 
-    // memos: per-heritage last-writer-wins by memoMTimes (ms epoch).
-    //   - If only one side has a memo, take it (and inherit its mtime).
-    //   - If both sides have one, keep the side with the newer mtime.
-    //   - When mtimes are missing (older client) we fall back to the
-    //     side-level lastModified, then finally to "remote wins" so a
-    //     freshly-installed device doesn't accidentally wipe a Gist memo.
-    var memos = {};
-    var memoMTimes = {};
+    // memos: clock-free 3-way merge (see mergeMemos). We compare each side
+    // against the last-synced base snapshot to decide who actually edited,
+    // instead of trusting device clocks. memoMTimes is kept written for
+    // backward compatibility but is no longer used for conflict resolution.
     var lm = (local && local.memos)  || {};
     var rm = (remote && remote.memos) || {};
-    var lmt = (local && local.memoMTimes)  || {};
-    var rmt = (remote && remote.memoMTimes) || {};
-    var memoKeys = {};
-    Object.keys(lm).forEach(function(k) { memoKeys[k] = 1; });
-    Object.keys(rm).forEach(function(k) { memoKeys[k] = 1; });
-    Object.keys(memoKeys).forEach(function(k) {
-      var hasL = Object.prototype.hasOwnProperty.call(lm, k);
-      var hasR = Object.prototype.hasOwnProperty.call(rm, k);
-      if (hasL && !hasR) {
-        memos[k] = lm[k]; memoMTimes[k] = lmt[k] || lt;
-      } else if (!hasL && hasR) {
-        memos[k] = rm[k]; memoMTimes[k] = rmt[k] || rt;
-      } else {
-        var lts = lmt[k] || lt;
-        var rts = rmt[k] || rt;
-        if (lts >= rts) { memos[k] = lm[k]; memoMTimes[k] = lts; }
-        else            { memos[k] = rm[k]; memoMTimes[k] = rts; }
-      }
-      // Empty-string memos count as "deleted" — drop them from the result
-      // so a deletion on one device propagates to the other after the
-      // overwrite has been recorded.
-      if (typeof memos[k] === 'string' && memos[k].trim() === '') {
-        delete memos[k];
-        delete memoMTimes[k];
-      }
-    });
+    var base = (local && local.memosBase) || {};
+    var memos = mergeMemos(lm, rm, base);
 
     return {
       version: 1,
@@ -194,8 +180,48 @@
       checks: checks,
       quiz:   quiz,
       memos:  memos,
-      memoMTimes: memoMTimes,
+      memoMTimes: local && local.memoMTimes || {},
     };
+  }
+
+  // Clock-free 3-way merge for free-form memos.
+  //   base = memos as they were at the last successful sync (common ancestor)
+  //   For each heritage key, compare local & remote against base:
+  //     - only local changed   → local wins (incl. a local deletion)
+  //     - only remote changed  → remote wins (incl. a remote deletion)
+  //     - both changed, equal  → that value
+  //     - both changed, differ → KEEP BOTH (never silently lose study notes)
+  //   "undefined" (key absent) represents "no memo / deleted".
+  function memoAt(o, k) {
+    return Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined;
+  }
+  function mergeMemos(localM, remoteM, baseM) {
+    localM = localM || {}; remoteM = remoteM || {}; baseM = baseM || {};
+    var out = {};
+    var keys = {};
+    Object.keys(localM).forEach(function(k) { keys[k] = 1; });
+    Object.keys(remoteM).forEach(function(k) { keys[k] = 1; });
+    Object.keys(baseM).forEach(function(k) { keys[k] = 1; });
+    Object.keys(keys).forEach(function(k) {
+      var l = memoAt(localM, k);
+      var r = memoAt(remoteM, k);
+      var b = memoAt(baseM, k);
+      var lChanged = (l !== b);
+      var rChanged = (r !== b);
+      var v;
+      if (lChanged && !rChanged)       v = l;            // only local edited/deleted
+      else if (!lChanged && rChanged)  v = r;            // only remote edited/deleted
+      else if (!lChanged && !rChanged) v = (l !== undefined ? l : r); // unchanged
+      else {                                             // both changed since base
+        if (l === r)            v = l;                   // same edit on both
+        else if (l === undefined) v = r;                 // local deleted, remote edited → keep text
+        else if (r === undefined) v = l;                 // remote deleted, local edited → keep text
+        else v = String(l) + '\n----（別端末のメモ）----\n' + String(r); // true conflict → keep both
+      }
+      // Empty / whitespace-only memos mean "deleted" — drop from result.
+      if (v !== undefined && String(v).trim() !== '') out[k] = v;
+    });
+    return out;
   }
 
   // --- Gist API wrappers ---------------------------------------------------
@@ -299,6 +325,19 @@
       var local  = loadLocal();
       var merged = merge(local, remote);
       saveLocal(merged);
+      // If the merge produced anything the Gist doesn't already hold, push it
+      // back so both devices converge to the same state. Then the base
+      // snapshot can safely be set to the merged memos (== Gist now).
+      var changed =
+        JSON.stringify(merged.memos  || {}) !== JSON.stringify(remote.memos  || {}) ||
+        JSON.stringify(merged.checks || {}) !== JSON.stringify(remote.checks || {}) ||
+        JSON.stringify(merged.quiz   || {}) !== JSON.stringify(remote.quiz   || {});
+      if (changed) {
+        try { await updateGist(token, gistId, merged); } catch (e2) {
+          console.warn('[HSync] converge-push after pull failed:', e2);
+        }
+      }
+      saveMemosBase(merged.memos);
       HSync.lastSyncAt = new Date();
       setStatus('synced', null);
       try { HSync.onDataLoaded(merged); } catch (e) {}
@@ -325,6 +364,9 @@
         if (found) { gistId = found.id; HSync.setGistId(gistId); await updateGist(token, gistId, local, opts); }
         else       { var ng = await createGist(token, local); HSync.setGistId(ng.id); }
       }
+      // Gist now holds exactly local.memos → record it as the new base so the
+      // next merge can detect future one-sided edits without clocks.
+      saveMemosBase(local.memos);
       HSync.lastSyncAt = new Date();
       setStatus('synced', null);
     } catch (e) {
@@ -442,11 +484,14 @@
     btn.type = 'button';
     btn.textContent = '🔄';
     btn.title = 'Gistから最新状態を取得（PC⇔スマホの同期待ちを短縮）';
-    btn.addEventListener('click', function() {
+    btn.addEventListener('click', async function() {
       if (!HSync.getToken()) {
         alert('先に「⚙️ 同期設定」でトークンを登録してください。');
         return;
       }
+      // Send any just-typed (still-debounced) memo to the Gist FIRST, so the
+      // pull can't pull down an older copy and overwrite your fresh edit.
+      try { await HSync.flushPendingPush(); } catch (e) {}
       HSync.pull();
     });
     pill.parentNode.insertBefore(btn, pill);
@@ -599,7 +644,9 @@
       var now = Date.now();
       if (now - lastAutoPullAt > AUTO_PULL_THROTTLE_MS) {
         lastAutoPullAt = now;
-        HSync.pull();
+        // Flush any pending local edit before pulling so a returning device
+        // doesn't overwrite its own unsynced memo with the older remote copy.
+        HSync.flushPendingPush().then(function() { HSync.pull(); });
       }
     }
   }
