@@ -329,6 +329,7 @@ body {
 .popup-meta { font-size: 12px; color: #555; margin-bottom: 6px; }
 .popup-meta span { background: #f0f0f0; padding: 1px 6px; border-radius: 3px; margin-right: 4px; }
 .popup-page { font-size: 12px; font-weight: 700; color: #d35400; margin-bottom: 6px; }
+.popup-chapter { font-weight: 500; color: #777; margin-left: 4px; }
 .popup-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .popup-btn {
   padding: 7px 12px; font-size: 13px; font-weight: 700;
@@ -529,9 +530,9 @@ body {
   <div class="divider"></div>
   <span>表示中: <span class="hits" id="visibleCount">0</span> 件</span>
   <div class="divider"></div>
-  <label class="memo-search-wrap" title="自分が書いたメモのキーワード検索">
+  <label class="memo-search-wrap" title="自分が書いたメモ＋ノート番号（ノート①〜④）で検索">
     📝 メモ検索:
-    <input type="text" id="memoSearch" placeholder="メモ内のキーワード" oninput="onMemoSearchInput()">
+    <input type="text" id="memoSearch" placeholder="メモ／ノート④ など" oninput="onMemoSearchInput()">
     <button type="button" class="memo-clear" id="memoSearchClear" onclick="clearMemoSearch()" title="クリア">×</button>
     <span class="memo-hits" id="memoSearchHits"></span>
   </label>
@@ -1002,7 +1003,12 @@ function openPopup(marker) {
   if (d.year) html += '<span>' + escHtml(d.year) + '年</span>';
   if (d.classification) html += '<span>' + escHtml(d.classification) + '</span>';
   html += '</div>';
-  if (d.page) html += '<div class="popup-page">📖 P.' + escHtml(d.page) + '</div>';
+  if (d.page || d.chapter) {
+    html += '<div class="popup-page">📖 ';
+    if (d.page) html += 'P.' + escHtml(d.page);
+    if (d.chapter) html += (d.page ? ' ' : '') + '<span class="popup-chapter">' + escHtml(d.chapter) + '</span>';
+    html += '</div>';
+  }
   html += '<div class="popup-actions">';
   var directCls = hasDirectPamon(d) ? ' pamon-direct' : '';
   var pamonLabel = hasDirectPamon(d)
@@ -1176,7 +1182,7 @@ function renderSidebar() {
     var c = getCheck(d.name);
     var memoText = (MEMOS[d.name] || '');
     var hasMemo = memoText.trim() !== '';
-    var memoHit = memoQ && memoText.toLowerCase().indexOf(memoQ) >= 0;
+    var memoHit = memoQ && memoSearchText(d.name).indexOf(memoQ) >= 0;
     var hitCls = memoHit ? ' memo-hit' : '';
     html += '<div class="list-item check-' + c + hitCls + '" data-name="' + escHtml(d.name) + '" onclick="onListClick(' + m._idx + ')">';
     html += '<div class="list-dot ' + cat + '"></div>';
@@ -1344,15 +1350,18 @@ function getMemoSearchQuery() {
   var el = document.getElementById('memoSearch');
   return el ? (el.value || '').trim().toLowerCase() : '';
 }
-// 指定キーワードを含むメモがある遺産名（小文字一致）。空クエリなら null。
+// メモ検索の対象テキスト：手書きノート番号（ノート①〜④）＋自由記述メモ。
+// これにより「ノート④」で検索すると、メモが空でも該当遺産がヒットする。
+function memoSearchText(name) {
+  return (noteLabelOf(name) + ' ' + (MEMOS[name] || '')).toLowerCase();
+}
+// 指定キーワードを含む遺産名（小文字一致）。空クエリなら null。
 function memoSearchMatches(q) {
   if (!q) return null;
   var hits = {};
-  for (var name in MEMOS) {
-    if (!Object.prototype.hasOwnProperty.call(MEMOS, name)) continue;
-    var t = (MEMOS[name] || '').toLowerCase();
-    if (t.indexOf(q) >= 0) hits[name] = true;
-  }
+  MAP_DATA.forEach(function(d) {
+    if (memoSearchText(d.name).indexOf(q) >= 0) hits[d.name] = true;
+  });
   return hits;
 }
 function refreshMemoSearchHits() {
@@ -1405,8 +1414,13 @@ function renderMemoListModal() {
   var rows = [];
   MAP_DATA.forEach(function(d) {
     var memo = (MEMOS[d.name] || '').trim();
-    if (!memo) return;
-    if (q && memo.toLowerCase().indexOf(q) < 0) return;
+    if (q) {
+      // 検索中：ノート番号＋メモを対象に一致判定（メモが空でもノート番号でヒット）
+      if (memoSearchText(d.name).indexOf(q) < 0) return;
+    } else {
+      // 通常時：メモがある遺産のみ一覧表示
+      if (!memo) return;
+    }
     rows.push({ d: d, memo: memo });
   });
   rows.sort(function(a, b) {
@@ -1437,7 +1451,11 @@ function renderMemoListModal() {
     if (d.year) html += (d.country ? ' / ' : '') + escHtml(d.year) + '年';
     if (d.classification) html += ' / ' + escHtml(d.classification);
     html +=   '</div>';
-    html +=   '<div class="memo-row-text">' + highlightHtml(r.memo, q) + '</div>';
+    if (r.memo) {
+      html += '<div class="memo-row-text">' + highlightHtml(r.memo, q) + '</div>';
+    } else {
+      html += '<div class="memo-row-text" style="color:#aaa">（メモ未記入）</div>';
+    }
     html += '</div>';
   });
   body.innerHTML = html;
