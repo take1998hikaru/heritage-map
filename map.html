@@ -366,6 +366,9 @@ body {
 .popup-memo { margin-top: 10px; }
 .popup-memo-label { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 700; color: #1a5276; margin-bottom: 4px; }
 .popup-memo-hint { font-size: 10px; font-weight: 500; color: #888; background: #f0f0f0; padding: 1px 6px; border-radius: 3px; }
+/* ノート番号バッジ（手書きノート①〜④の対応表示） */
+.popup-note-badge { margin-right: auto; margin-left: 6px; font-size: 10px; font-weight: 700; color: #fff; background: #d35400; padding: 1px 7px; border-radius: 9px; letter-spacing: 0.04em; }
+.list-note-badge { font-size: 10px; font-weight: 700; color: #fff; background: #d35400; padding: 0 6px; border-radius: 8px; }
 .popup-memo-input {
   width: 100%; min-height: 60px; resize: vertical;
   padding: 7px 9px; font-size: 13px; line-height: 1.5;
@@ -620,6 +623,84 @@ function setCheck(name, val) {
   else CHECKS[name] = val;
   saveChecks();
 }
+
+// ============================================================
+// ノート対応表（手書きノート①〜④ → 遺産名）
+// heritage_review.html の BUILTIN から自動生成。メモ欄にノート番号を表示する。
+// ============================================================
+var NOTE_LABELS = {
+  "シミエン国立公園": "ノート①",
+  "イヴィンド国立公園": "ノート①",
+  "リオ・アビセオ国立公園": "ノート①",
+  "サロンガ国立公園": "ノート①",
+  "カジランガ国立公園": "ノート①",
+  "ケオラデオ国立公園": "ノート①",
+  "コモエ国立公園": "ノート①",
+  "チトワン国立公園": "ノート①",
+  "「八萬大蔵経」版木所蔵の海印寺": "ノート①",
+  "盤亀川沿いの岩面彫刻群": "ノート①",
+  "ミジケンダ諸族のカヤ聖域森林": "ノート①",
+  "バット、アル・フトゥム、アル・アインの考古遺跡": "ノート①",
+  "タプタプアテア": "ノート①",
+  "ザビードの歴史地区": "ノート①",
+  "アッコの旧市街": "ノート①",
+  "チュニスの旧市街": "ノート①",
+  "伝説の都市トンブクトゥ": "ノート①",
+  "コトルの文化歴史地域と自然": "ノート②",
+  "セネガンビアのストーン・サークル遺跡群": "ノート②",
+  "メノルカ島のタライオティック文化": "ノート②",
+  "人類化石出土のサンギラン遺跡": "ノート②",
+  "北京原人化石出土の周口店遺跡": "ノート②",
+  "マルタの巨石神殿群": "ノート②",
+  "オークニー諸島の新石器時代遺跡": "ノート②",
+  "バルーミニのスー・ヌラージ": "ノート②",
+  "ナン・マトール:ミクロネシア東部の儀礼的中心地": "ノート②",
+  "ニンバ山厳正自然保護区": "ノート②",
+  "青海フフシル（可可西里）": "ノート②",
+  "オオカバマダラ蝶生物圏保存地域": "ノート②",
+  "カンペチェ州カラクムルの古代マヤ都市と保護熱帯雨林群": "ノート②",
+  "シングヴェトリル国立公園": "ノート②",
+  "グロス・モーン国立公園": "ノート②",
+  "タジキスタン国立公園（パミールの山脈）": "ノート③",
+  "ヴィエリチカとボフニャの王立岩塩坑": "ノート③",
+  "アツィナナナの熱帯雨林": "ノート③",
+  "アンドレファナ乾燥林群": "ノート③",
+  "W-アルリ-ペンジャーリ国立公園群": "ノート③",
+  "ニョコロ・コバ国立公園": "ノート③",
+  "テ・ワヒポウナム": "ノート③",
+  "フェズの旧市街": "ノート③",
+  "マラケシュの旧市街": "ノート③",
+  "ラバト：近代の首都と歴史都市の側面を併せもつ都市": "ノート③",
+  "ラジャスタン州のジャイプール市街": "ノート③",
+  "バゲルハット：モスクを中心とした歴史都市": "ノート③",
+  "ブリュッセルのグラン・プラス": "ノート③",
+  "アムステルダム中心部：ジンフェルグラハト内部の17世紀の環状運河地区": "ノート③",
+  "ミディ運河": "ノート③",
+  "ベルリンのモダニズム公共住宅": "ノート③",
+  "カラカスの大学都市": "ノート③",
+  "トリポリのラシード・カラーミー国際見本市会場": "ノート③",
+  "ヨーロッパの大温泉都市群": "ノート④",
+  "カナイマ国立公園": "ノート④",
+  "ゼレナー・ホラにあるネポムークの聖ヨハネ巡礼教会": "ノート④",
+  "テルチの歴史地区": "ノート④",
+  "ナンシーのスタニスラス広場、カリエール広場、アリアンス広場": "ノート④",
+  "海港都市バルパライソの歴史地区": "ノート④",
+  "ヴルコリニェツの伝統的集落": "ノート④",
+  "クイーンズランドの湿潤熱帯地域": "ノート④",
+  "シホテ・アリニ山脈中央部": "ノート④",
+  "サン・クリストバル・デ・ラ・ラグナ": "ノート④",
+  "ビガンの歴史地区": "ノート④",
+  "サルヴァドル・デ・バイアの歴史地区": "ノート④",
+  "プエブラの歴史地区": "ノート④",
+  "シダーデ・ヴェーリャ、リベイラ・グランデの歴史地区": "ノート④",
+  "カルタヘナの港、要塞、歴史的建造物群": "ノート④",
+  "バンディアガラの断崖": "ノート④",
+  "クタマク：バタマリバ人の土地": "ノート④",
+  "シュパイアの大聖堂": "ノート④",
+  "イラン縦貫鉄道": "ノート④",
+  "ゼメリング鉄道": "ノート④"
+};
+function noteLabelOf(name) { return NOTE_LABELS[name] || ''; }
 
 // ============================================================
 // 遺産メモ（自由記述メモ機能 — Gist同期対象）
@@ -950,8 +1031,11 @@ function openPopup(marker) {
 
   // 自由記述メモ — このポップアップを閉じてもlocalStorageに保存される
   var memoVal = getMemo(d.name);
+  var noteLbl = noteLabelOf(d.name);
   html += '<div class="popup-memo">';
-  html += '<label class="popup-memo-label">📝 メモ <span class="popup-memo-hint">自動保存</span></label>';
+  html += '<label class="popup-memo-label">📝 メモ'
+       +  (noteLbl ? ' <span class="popup-note-badge">' + escHtml(noteLbl) + '</span>' : '')
+       +  ' <span class="popup-memo-hint">自動保存</span></label>';
   html += '<textarea class="popup-memo-input" data-heritage-memo="' + escHtml(d.name) + '" '
        +  'placeholder="キーワード・気づき・疑問など自由に記入（自動保存されます）" rows="3">'
        +  escHtml(memoVal) + '</textarea>';
@@ -1099,6 +1183,8 @@ function renderSidebar() {
     html += '<div class="list-info">';
     html += '<div class="list-name">' + escHtml(d.name) + (hasMemo ? '<span class="memo-icon" title="メモあり">📝</span>' : '') + '</div>';
     html += '<div class="list-sub">';
+    var listNote = noteLabelOf(d.name);
+    if (listNote) html += '<span class="list-note-badge">' + escHtml(listNote) + '</span>';
     if (d.country) html += '<span>' + escHtml(d.country) + '</span>';
     if (d.year) html += '<span>' + escHtml(d.year) + '年</span>';
     if (d.page) html += '<span class="list-page">P.' + escHtml(d.page) + '</span>';
@@ -1342,6 +1428,8 @@ function renderMemoListModal() {
     for (var i = 0; i < allMarkers.length; i++) if (allMarkers[i]._d.name === d.name) { idx = i; break; }
     html += '<div class="memo-row" onclick="onMemoRowClick(' + idx + ')">';
     html +=   '<div class="memo-row-title">' + escHtml(d.name);
+    var rowNote = noteLabelOf(d.name);
+    if (rowNote) html += '<span class="list-note-badge">' + escHtml(rowNote) + '</span>';
     if (d.page) html += '<span class="memo-row-page">P.' + escHtml(d.page) + '</span>';
     html +=   '</div>';
     html +=   '<div class="memo-row-meta">';
