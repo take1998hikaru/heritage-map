@@ -724,6 +724,40 @@ var NOTE_LABELS = {
 function noteLabelOf(name) { return NOTE_LABELS[name] || ''; }
 
 // ============================================================
+// ノートを地図に追加したときの「周回」シード
+// 対象ノートの遺産の周回チェックを、現在の周回数に関係なく +1 する（上限3周）。
+//   例：未チェック(0周)→1周、既に1周→2周、2周→3周。
+// 「全端末で一度だけ」適用するため、適用済みフラグを CHECKS 内の予約キー
+//   （__noteSeed_xxx）に保存する。CHECKS は Gist 同期され、マージは Math.max なので
+//   フラグが伝播し、別端末での二重カウントを防ぐ。予約キーは遺産名と一致しないため、
+//   統計・マーカー・一覧・メモ検索（いずれも MAP_DATA を走査）には影響しない。
+// 【今後の運用】新しいノートを地図に追加したら、NOTE_LABELS に遺産を足したうえで、
+//   下の NOTE_SEED_BATCHES に「バッチ名: ノート番号」を1行足すこと（バッチ名は使い回さない）。
+// ============================================================
+var NOTE_SEED_BATCHES = { 'note5': 'ノート⑤' };
+function noteSeedFlag(batch) { return '__noteSeed_' + batch; }
+function applyNoteSeeds() {
+  var changed = false;
+  for (var batch in NOTE_SEED_BATCHES) {
+    if (!Object.prototype.hasOwnProperty.call(NOTE_SEED_BATCHES, batch)) continue;
+    var flag = noteSeedFlag(batch);
+    if (CHECKS[flag]) continue;              // 適用済み（同期で全端末に伝播）
+    var lbl = NOTE_SEED_BATCHES[batch];
+    for (var name in NOTE_LABELS) {
+      if (!Object.prototype.hasOwnProperty.call(NOTE_LABELS, name)) continue;
+      if (NOTE_LABELS[name] === lbl) {
+        var c = CHECKS[name] || 0;
+        if (c < 3) CHECKS[name] = c + 1;     // 現在の周回数に関係なく必ず+1（上限3周）
+      }
+    }
+    CHECKS[flag] = 1;                         // 適用済みフラグ（CHECKSと一緒に同期される）
+    changed = true;
+  }
+  if (changed) saveChecks();
+}
+applyNoteSeeds();
+
+// ============================================================
 // 遺産メモ（自由記述メモ機能 — Gist同期対象）
 // ============================================================
 var MEMO_KEY = 'heritage_map_memos_v1';
@@ -1521,6 +1555,7 @@ if (window.HSync) {
   HSync.onDataLoaded = function() {
     try { CHECKS = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') || {}; } catch (e) { CHECKS = {}; }
     try { MEMOS = JSON.parse(localStorage.getItem(MEMO_KEY) || '{}') || {}; } catch (e) { MEMOS = {}; }
+    applyNoteSeeds();   // 同期取り込み後、未適用のノートがあれば+1周を付与（フラグはCHECKSで同期）
     allMarkers.forEach(function(m) { refreshMarkerStyle(m); refreshMarkerTooltip(m); });
     renderSidebar();
     updateStats();
