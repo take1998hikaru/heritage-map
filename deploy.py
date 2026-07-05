@@ -32,11 +32,13 @@ SRC_DIR = os.path.normpath(os.path.join(HERE, '..', '世界遺産検定'))
 SRC_MAP = os.path.join(SRC_DIR, '世界遺産_地図.html')
 SRC_QUIZ = os.path.join(SRC_DIR, 'クイズ.html')
 SRC_REVIEW = os.path.join(SRC_DIR, 'ノート', 'heritage_review.html')
+SRC_DRILL = os.path.join(SRC_DIR, 'ノート', 'アウトプット模試.html')
 SRC_SYNC = os.path.join(SRC_DIR, 'sync.js')
 
 OUT_MAP = os.path.join(HERE, 'map.html')
 OUT_QUIZ = os.path.join(HERE, 'quiz.html')
 OUT_REVIEW = os.path.join(HERE, 'review.html')
+OUT_DRILL = os.path.join(HERE, 'drill.html')
 OUT_SYNC = os.path.join(HERE, 'sync.js')
 GATE_TEMPLATE = os.path.join(HERE, 'index.html')  # also the output
 
@@ -131,9 +133,13 @@ def inject_into_html(src_path, out_path, gate_snippet):
     patched = patched.replace('"クイズ.html?h=', '"quiz.html?h=')
     patched = patched.replace('クイズ.html?', 'quiz.html?')
 
-    # Map ⇔ review-note cross links: the source tree keeps the review app
-    # in ノート/, but the deploy bundle is flat (review.html next to map.html).
+    # Map ⇔ review-note ⇔ drill cross links: the source tree keeps the review
+    # app and the drill in ノート/, but the deploy bundle is flat.
+    # NOTE: 'ノート/heritage_review.html' must be replaced before the bare
+    # 'heritage_review.html' or the prefix would survive the rename.
     patched = patched.replace('ノート/heritage_review.html', 'review.html')
+    patched = patched.replace('heritage_review.html', 'review.html')
+    patched = patched.replace('アウトプット模試.html', 'drill.html')
     patched = patched.replace('../世界遺産_地図.html', 'map.html')
 
     with open(out_path, 'w', encoding='utf-8') as f:
@@ -194,6 +200,11 @@ def main():
         print(f'  review.html  : {os.path.getsize(OUT_REVIEW):,} bytes (ノート復習)')
     else:
         print(f'  [warn] {SRC_REVIEW} not found; review.html skipped')
+    if os.path.exists(SRC_DRILL):
+        inject_into_html(SRC_DRILL, OUT_DRILL, gate)
+        print(f'  drill.html   : {os.path.getsize(OUT_DRILL):,} bytes (アウトプット模試)')
+    else:
+        print(f'  [warn] {SRC_DRILL} not found; drill.html skipped')
     build_gate(password, gate_token)
 
     if os.path.exists(SRC_SYNC):

@@ -189,7 +189,10 @@
 <header>
   <div class="eyebrow" style="display:flex; justify-content:space-between; align-items:baseline; gap:8px;">
     <span>WORLD HERITAGE ・ 準一級</span>
-    <a href="map.html" style="color:var(--ink-soft); font-size:12px; letter-spacing:normal; font-weight:500; text-decoration:none; border:1px solid var(--line-strong); border-radius:8px; padding:3px 10px; background:var(--surface); white-space:nowrap;">🗺 地図チェック</a>
+    <span style="display:flex; gap:6px;">
+      <a href="drill.html" style="color:var(--ink-soft); font-size:12px; letter-spacing:normal; font-weight:500; text-decoration:none; border:1px solid var(--line-strong); border-radius:8px; padding:3px 10px; background:var(--surface); white-space:nowrap;">✏️ 模試</a>
+      <a href="map.html" style="color:var(--ink-soft); font-size:12px; letter-spacing:normal; font-weight:500; text-decoration:none; border:1px solid var(--line-strong); border-radius:8px; padding:3px 10px; background:var(--surface); white-space:nowrap;">🗺 地図チェック</a>
+    </span>
   </div>
   <h1>ノート復習 — キーワード逆引き</h1>
   <div class="progress-wrap">
@@ -742,6 +745,23 @@ function renderReview(){
 }
 
 let qList=[], qState=[], qPos=0, qDone=false, qDir="n2k";
+// 単語カードのkw欄から「クイズ用キーワード」を作る。
+// ・遺産名を含むキーワードは除外（答えがバレる）
+// ・他カードにも出てくる汎用キーワード（例: 1978年最初の登録12件）より固有のものを優先
+function kwNameTokens(name){
+  const t=name.split(/[・（）()：:「」\s／\/－\-]+/).filter(x=>x.length>=3);
+  t.push(name); return t;
+}
+function kwChoiceOf(c){
+  const toks=kwNameTokens(c.name);
+  const segs=(c.kw||'').split('／').filter(s=>s.length>0 && !toks.some(t=>s.indexOf(t)>=0));
+  if(segs.length===0) return c.primary;
+  const pool=scopeCards();
+  const uniq=segs.filter(s=>!pool.some(x=>x.key!==c.key && (x.kw||'').indexOf(s)>=0));
+  const use=uniq.slice(0,2);
+  if(use.length<2){ for(const s of segs){ if(use.length>=2) break; if(!use.includes(s)) use.push(s); } }
+  return use.join('／');
+}
 function pickDistractors(c){
   const pool=scopeCards();
   const same=pool.filter(x=>x.key!==c.key && x.cat===c.cat);
@@ -777,7 +797,7 @@ function renderQuiz(){
   const answered = st.chosen!==null;
   const promptLabel=n2k ? (c.star?'★ ':'')+'この遺産のキーワードは？' : (c.star?'★ ':'')+'このキーワードの遺産は？';
   const promptBody=n2k ? '<div class="kw" style="font-family:\'Shippori Mincho\',serif;font-weight:600">'+esc(c.name)+'</div><div class="meta">'+c.meta+'</div>'
-                       : '<div class="kw">'+esc(c.primary)+'</div>';
+                       : '<div class="kw">'+esc(kwChoiceOf(c))+'</div>';
   stage.innerHTML=qDirToggle()+`
     <div class="qhead"><span>第 <b>${qPos+1}</b> 問 / ${qList.length}　<span style="color:var(--hint)">回答済 ${answeredNow()}</span></span><span>正解 <b>${scoreNow()}</b></span></div>
     <div class="qprompt"><div class="face-label">${promptLabel}</div>${promptBody}</div>
@@ -790,7 +810,7 @@ function renderQuiz(){
   st.opts.forEach((o,i)=>{
     const b=document.createElement('button');
     b.className='opt';
-    b.innerHTML='<span class="onum">'+(i+1)+'</span>'+(n2k?esc(o.primary):esc(o.name));
+    b.innerHTML='<span class="onum">'+(i+1)+'</span>'+(n2k?esc(kwChoiceOf(o)):esc(o.name));
     if(answered){
       b.disabled=true;
       if(o.key===c.key) b.classList.add('correct');
