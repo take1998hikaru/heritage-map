@@ -149,6 +149,8 @@
   .opt:active{transform:scale(.99);}
   .opt.correct{background:var(--ok-bg); border-color:var(--park); color:var(--park); font-weight:500;}
   .opt.wrong{background:var(--bad-bg); border-color:var(--bad); color:var(--bad);}
+  .giveup{width:100%; margin-top:9px; border:1px dashed var(--line-strong); background:transparent; color:var(--ink-soft); font-family:inherit; font-size:13.5px; padding:11px 13px; border-radius:11px; cursor:pointer;}
+  .giveup:active{transform:scale(.99);}
   .feedback{margin-top:14px; padding:13px 15px; border-radius:11px; font-size:14px; line-height:1.7; display:none;}
   .feedback .ttl{font-weight:700; display:block; margin-bottom:3px;}
   .feedback.ok{background:var(--ok-bg);} .feedback.ok .ttl{color:var(--ok);}
@@ -802,9 +804,10 @@ function renderQuiz(){
     <div class="qhead"><span>第 <b>${qPos+1}</b> 問 / ${qList.length}　<span style="color:var(--hint)">回答済 ${answeredNow()}</span></span><span>正解 <b>${scoreNow()}</b></span></div>
     <div class="qprompt"><div class="face-label">${promptLabel}</div>${promptBody}</div>
     <div class="opts" id="opts"></div>
+    ${answered?'':'<button class="giveup" id="giveupBtn">🤷 わからない（復習リストへ）</button>'}
     <div class="feedback" id="fb"></div>
     <div id="qnav" style="margin-top:12px"></div>
-    <div class="kbhint">キーボード： 1〜4 で回答 ・ ←／→ で移動 ・ S で要復習</div>`;
+    <div class="kbhint">キーボード： 1〜4 で回答 ・ 0 でわからない ・ ←／→ で移動 ・ S で要復習</div>`;
   bindDir();
   const box=document.getElementById('opts');
   st.opts.forEach((o,i)=>{
@@ -819,6 +822,27 @@ function renderQuiz(){
     box.appendChild(b);
   });
   if(answered) showFeedback();
+  const gb=document.getElementById('giveupBtn');
+  if(gb) gb.onclick=giveUp;
+  renderNav();
+}
+
+function giveUp(){
+  const c=qList[qPos];
+  const st=qState[qPos];
+  if(st.chosen!==null) return;
+  st.chosen='__giveup__';
+  st.ok=false;
+  const s=stOf(c.key);
+  s.weak=true; s.known=false;   // 自動で復習リストへ
+  saveProg(); updateHeader();
+  const box=document.getElementById('opts');
+  [...box.children].forEach((b,i)=>{ b.disabled=true;
+    if(st.opts[i].key===c.key) b.classList.add('correct');
+  });
+  const gb=document.getElementById('giveupBtn');
+  if(gb) gb.remove();
+  showFeedback();
   renderNav();
 }
 
@@ -845,7 +869,8 @@ function showFeedback(){
   const c=qList[qPos], st=qState[qPos];
   const fb=document.getElementById('fb');
   fb.className='feedback '+(st.ok?'ok':'ng'); fb.style.display='block';
-  fb.innerHTML=`<span class="ttl">${st.ok?'正解！':'不正解'} ${c.name}</span><span style="font-size:13px;color:var(--ink-soft)">${metaLine(c)}</span><div class="nt" style="margin-top:6px"><b style="color:var(--ink)">キーワード：</b>${esc(c.kw)}</div><div class="nt" style="margin-top:4px">${esc(c.note)}</div>`;
+  const ttl = st.ok ? '正解！' : (st.chosen==='__giveup__' ? '復習リストに追加しました：' : '不正解');
+  fb.innerHTML=`<span class="ttl">${ttl} ${c.name}</span><span style="font-size:13px;color:var(--ink-soft)">${metaLine(c)}</span><div class="nt" style="margin-top:6px"><b style="color:var(--ink)">キーワード：</b>${esc(c.kw)}</div><div class="nt" style="margin-top:4px">${esc(c.note)}</div>`;
 }
 
 function renderNav(){
@@ -1026,6 +1051,8 @@ document.addEventListener('keydown', (e)=>{
   const st=qState[qPos]; if(!st) return;
   if(e.key>='1' && e.key<='4'){
     if(st.chosen===null && st.opts){ const i=parseInt(e.key)-1; if(st.opts[i]){ e.preventDefault(); answer(st.opts[i]); } }
+  } else if(e.key==='0'){
+    if(st.chosen===null){ e.preventDefault(); giveUp(); }
   } else if(e.key==='ArrowLeft'){ if(qPos>0){ e.preventDefault(); qPos--; renderQuiz(); } }
   else if(e.key==='ArrowRight' || e.key==='Enter'){
     if(st.chosen!==null){ e.preventDefault(); if(qPos<qList.length-1){ qPos++; renderQuiz(); } else { qDone=true; renderQuiz(); } }
