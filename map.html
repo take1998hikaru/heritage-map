@@ -1588,10 +1588,14 @@ function onListUndo(ev, name) {
 // ============================================================
 // Stats
 // ============================================================
+// 日本の遺産（第2章）は country に「日本」を含む。周回カウントの対象外にする。
+function isJapanHeritage(d) { return !!(d.country && d.country.indexOf('日本') >= 0); }
 function updateStats() {
-  var total = MAP_DATA.length;
+  // 日本の遺産は集計から除外（海外遺産のみで周回・完了率を数える）
+  var overseas = MAP_DATA.filter(function(d) { return !isJapanHeritage(d); });
+  var total = overseas.length;
   var c1 = 0, c2 = 0, c3 = 0;
-  MAP_DATA.forEach(function(d) {
+  overseas.forEach(function(d) {
     var c = getCheck(d.name);
     if (c === 1) c1++; else if (c === 2) c2++; else if (c === 3) c3++;
   });
