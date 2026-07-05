@@ -31,10 +31,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.normpath(os.path.join(HERE, '..', '世界遺産検定'))
 SRC_MAP = os.path.join(SRC_DIR, '世界遺産_地図.html')
 SRC_QUIZ = os.path.join(SRC_DIR, 'クイズ.html')
+SRC_REVIEW = os.path.join(SRC_DIR, 'ノート', 'heritage_review.html')
 SRC_SYNC = os.path.join(SRC_DIR, 'sync.js')
 
 OUT_MAP = os.path.join(HERE, 'map.html')
 OUT_QUIZ = os.path.join(HERE, 'quiz.html')
+OUT_REVIEW = os.path.join(HERE, 'review.html')
 OUT_SYNC = os.path.join(HERE, 'sync.js')
 GATE_TEMPLATE = os.path.join(HERE, 'index.html')  # also the output
 
@@ -129,6 +131,11 @@ def inject_into_html(src_path, out_path, gate_snippet):
     patched = patched.replace('"クイズ.html?h=', '"quiz.html?h=')
     patched = patched.replace('クイズ.html?', 'quiz.html?')
 
+    # Map ⇔ review-note cross links: the source tree keeps the review app
+    # in ノート/, but the deploy bundle is flat (review.html next to map.html).
+    patched = patched.replace('ノート/heritage_review.html', 'review.html')
+    patched = patched.replace('../世界遺産_地図.html', 'map.html')
+
     with open(out_path, 'w', encoding='utf-8') as f:
         f.write(patched)
 
@@ -182,6 +189,11 @@ def main():
     print(f'  map.html     : {os.path.getsize(OUT_MAP):,} bytes')
     inject_into_html(SRC_QUIZ, OUT_QUIZ, gate)
     print(f'  quiz.html    : {os.path.getsize(OUT_QUIZ):,} bytes')
+    if os.path.exists(SRC_REVIEW):
+        inject_into_html(SRC_REVIEW, OUT_REVIEW, gate)
+        print(f'  review.html  : {os.path.getsize(OUT_REVIEW):,} bytes (ノート復習)')
+    else:
+        print(f'  [warn] {SRC_REVIEW} not found; review.html skipped')
     build_gate(password, gate_token)
 
     if os.path.exists(SRC_SYNC):
